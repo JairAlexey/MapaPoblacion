@@ -1,137 +1,375 @@
-from flask import Blueprint, render_template
+from flask import Blueprint, render_template, current_app, jsonify
 import folium
 import geopandas as gpd
 import os
 from shapely.geometry import Point
 import json
+from functools import lru_cache
+import logging
+import pandas as pd
+
+# Configurar logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 main_bp = Blueprint("main", __name__)
 
+@lru_cache(maxsize=128)
 def get_population_color(pop_value, region="continental"):
-    """Retorna color basado en la densidad de población, ajustado por región"""
-    if region == "galapagos":
-        # Escala especial para Galápagos (densidades menores)
-        if pop_value < 1:
-            return "lightgreen", 0.8
-        elif pop_value < 5:
-            return "green", 0.8
-        elif pop_value < 20:
-            return "yellow", 0.9
-        elif pop_value < 50:
-            return "orange", 0.9
-        else:
-            return "red", 1.0
+    """Retorna color basado en la densidad de población, escala unificada para todo Ecuador"""
+    # Paleta tipo LandScan unificada para todo el territorio ecuatoriano
+    if pop_value < 5:
+        return "#0066cc", 0.3  # Azul claro - muy baja densidad
+    elif pop_value < 25:
+        return "#00aa44", 0.4  # Verde - baja densidad
+    elif pop_value < 100:
+        return "#88dd00", 0.5  # Verde claro - densidad moderada baja
+    elif pop_value < 500:
+        return "#ffff00", 0.6  # Amarillo - densidad moderada
+    elif pop_value < 1500:
+        return "#ffaa00", 0.7  # Naranja - densidad alta
+    elif pop_value < 5000:
+        return "#ff5500", 0.8  # Rojo-naranja - densidad muy alta
     else:
-        # Escala estándar para continental
-        if pop_value < 50:
-            return "green", 0.6
-        elif pop_value < 200:
-            return "yellow", 0.7
-        elif pop_value < 500:
-            return "orange", 0.8
-        else:
-            return "red", 0.9
+        return "#cc0000", 0.9  # Rojo intenso - densidad extrema
 
-@main_bp.route("/")
-def mapa():
-    # Crear el mapa básico centrado en Quito
-    m = folium.Map(location=[-0.20, -78.50], zoom_start=11, tiles="cartodbpositron")
-    
+@lru_cache(maxsize=1)
+def load_cantones_data():
+    """Carga datos de cantones con cache"""
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     DATA_DIR = os.path.join(BASE_DIR, "..", "data")
-    
-    # Cargar y mostrar cantones
     cantones_path = os.path.join(DATA_DIR, "cantones.geojson")
-    try:
-        gdf_cantones = gpd.read_file(cantones_path)
-        
-        # Agregar cantones al mapa
-        for _, row in gdf_cantones.iterrows():
-            folium.GeoJson(
-                row.geometry.__geo_interface__,
-                style_function=lambda _: {
-                    "fillColor": "transparent",
-                    "color": "black",
-                    "weight": 2,
-                    "fillOpacity": 0,
-                },
-                tooltip=f"Cantón: {row.get('DPA_DESCAN', 'Sin nombre')}"
-            ).add_to(m)
-            
-    except Exception as e:
-        print(f"Error cargando cantones: {e}")
     
-    # Cargar y mostrar datos de población
-    poblacion_path = os.path.join(DATA_DIR, "poblacion_ecuador_enhanced.geojson")
+    try:
+        return gpd.read_file(cantones_path)
+    except Exception as e:
+        logger.error(f"Error cargando cantones: {e}")
+        return None
+
+@lru_cache(maxsize=1)
+def load_ecuador_boundaries():
+    """Carga fronteras de Ecuador con cache"""
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    DATA_DIR = os.path.join(BASE_DIR, "..", "data")
     ecuador_path = os.path.join(DATA_DIR, "ec.json")
     
     try:
-        # Cargar fronteras de Ecuador
-        print("Cargando fronteras de Ecuador...")
         gdf_ecuador = gpd.read_file(ecuador_path)
-        
-        # Crear una geometría unificada de todo Ecuador
-        print("Creando geometría unificada...")
-        ecuador_union = gdf_ecuador.geometry.unary_union
-        
-        # Cargar datos de población
-        print("Cargando datos de población...")
+        return gdf_ecuador, gdf_ecuador.geometry.unary_union
+    except Exception as e:
+        logger.error(f"Error cargando fronteras: {e}")
+        return None, None
+
+@lru_cache(maxsize=1)
+def load_all_population_data():
+    """Carga TODOS los datos de población REALISTAS para cálculos precisos"""
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    DATA_DIR = os.path.join(BASE_DIR, "..", "data")
+    
+    # USAR DATOS REALISTAS basados en población oficial + LandScan
+    poblacion_path = os.path.join(DATA_DIR, "poblacion_ecuador_realistic.geojson")
+    
+    try:
+        logger.info("🎯 Cargando datos REALISTAS de población...")
         gdf_poblacion = gpd.read_file(poblacion_path)
         
-        # Asegurar que ambos GeoDataFrames tengan el mismo CRS
+        # Cargar fronteras para filtrado
+        gdf_ecuador, ecuador_union = load_ecuador_boundaries()
+        if gdf_ecuador is None:
+            logger.warning("No se pudieron cargar fronteras de Ecuador")
+            return gdf_poblacion  # Usar todos los datos sin filtro espacial
+            
+        # Asegurar mismo CRS
         if gdf_poblacion.crs != gdf_ecuador.crs:
             gdf_poblacion = gdf_poblacion.to_crs(gdf_ecuador.crs)
         
-        total_puntos = len(gdf_poblacion)
-        print(f"Total de puntos de población: {total_puntos}")
-        
-        # Método más eficiente: usar geopandas para filtrar espacialmente
-        print("Filtrando puntos dentro de Ecuador...")
-        # Usar both within() e intersects() para incluir islas y territorios separados
-        gdf_poblacion_filtrada = gdf_poblacion[
+        # Filtrar espacialmente (SIN LÍMITE DE PUNTOS)
+        logger.info("Filtrando puntos dentro de Ecuador...")
+        gdf_filtrada = gdf_poblacion[
             gdf_poblacion.within(ecuador_union) | 
             gdf_poblacion.intersects(ecuador_union)
         ]
         
-        puntos_filtrados = len(gdf_poblacion_filtrada)
-        print(f"Puntos filtrados: {puntos_filtrados} de {total_puntos} puntos originales")
+        # Estadísticas de los datos cargados
+        total_population = gdf_filtrada['population'].sum()
+        logger.info(f"✅ DATOS REALISTAS cargados: {len(gdf_filtrada):,} puntos")
+        logger.info(f"🏘️  Población total REALISTA: {total_population:,.0f} habitantes")
+        logger.info(f"📊 Rango de población: {gdf_filtrada['population'].min():.1f} - {gdf_filtrada['population'].max():.1f}")
         
-        # Crear grupo de capas para población
-        poblacion_group = folium.FeatureGroup(name="Densidad de Población")
+        return gdf_filtrada
         
-        # Agregar solo los puntos que están dentro de Ecuador
-        print("Agregando puntos al mapa...")
-        for _, row in gdf_poblacion_filtrada.iterrows():
-            pop_value = row.get('population', 0)
-            region = row.get('region', 'continental')
-            color, opacity = get_population_color(pop_value, region)
-            
-            # Ajustar tamaño basado en región y población
-            if region == "galapagos":
-                radius = min(6, max(2, pop_value * 0.2))  # Círculos más grandes para islas
-            else:
-                radius = 3  # Tamaño estándar para continental
-            
-            folium.CircleMarker(
-                location=[row.geometry.y, row.geometry.x],
-                radius=radius,
-                color=color,
-                fill=True,
-                fillColor=color,
-                fillOpacity=opacity,
-                weight=1,
-                popup=f"Población: {pop_value:.1f}<br>Región: {region.title()}",
-                tooltip=f"Densidad: {pop_value:.1f} hab/km² ({region.title()})"
-            ).add_to(poblacion_group)
-        
-        poblacion_group.add_to(m)
-        
-        # Agregar control de capas
-        folium.LayerControl().add_to(m)
-        print("Mapa de población completado!")
-            
     except Exception as e:
-        print(f"Error cargando datos de población: {e}")
+        logger.error(f"❌ Error cargando datos realistas: {e}")
+        logger.info("📁 Intentando fallback a datos calibrados...")
+        
+        # Fallback a datos anteriores
+        poblacion_path_fallback = os.path.join(DATA_DIR, "poblacion_ecuador_calibrated.geojson")
+        try:
+            gdf_poblacion = gpd.read_file(poblacion_path_fallback)
+            logger.info(f"⚠️  Usando datos fallback calibrados: {len(gdf_poblacion):,} puntos")
+            return gdf_poblacion
+        except Exception as e2:
+            logger.error(f"❌ Error en fallback calibrados: {e2}")
+            # Último fallback
+            poblacion_path_fallback2 = os.path.join(DATA_DIR, "poblacion_ecuador_enhanced.geojson")
+            try:
+                gdf_poblacion = gpd.read_file(poblacion_path_fallback2)
+                logger.info(f"⚠️  Usando datos fallback enhanced: {len(gdf_poblacion):,} puntos")
+                return gdf_poblacion
+            except Exception as e3:
+                logger.error(f"❌ Error en fallback enhanced: {e3}")
+                return None
+
+@lru_cache(maxsize=1)
+def load_population_data():
+    """Carga datos de población para renderizado con muchos más puntos para visualización tipo LandScan"""
+    # Obtener todos los datos primero
+    gdf_all_population = load_all_population_data()
+    if gdf_all_population is None:
+        return None
+    
+    try:
+        # Usar menos puntos en producción para mejor rendimiento
+        if os.environ.get('RAILWAY_ENVIRONMENT'):
+            max_points = 25000  # Reducido para Railway
+        else:
+            max_points = 50000  # Valor para desarrollo local
+        
+        # Estrategia mixta: combinar puntos de alta y baja población para mejor cobertura
+        gdf_high = gdf_all_population.sort_values('population', ascending=False)
+        gdf_low = gdf_all_population.sort_values('population', ascending=True)
+        
+        # Tomar 70% de puntos con mayor población y 30% distribuidos aleatoriamente
+        high_count = int(max_points * 0.7)
+        remaining_count = max_points - high_count
+        
+        if len(gdf_all_population) > max_points:
+            # Puntos de alta población
+            selected_high = gdf_high.head(high_count)
+            
+            # Puntos adicionales para cobertura espacial (excluir los ya seleccionados)
+            remaining_points = gdf_all_population[~gdf_all_population.index.isin(selected_high.index)]
+            
+            if len(remaining_points) > remaining_count:
+                # Seleccionar aleatoriamente para mejor distribución espacial
+                selected_low = remaining_points.sample(n=remaining_count, random_state=42)
+            else:
+                selected_low = remaining_points
+            
+            # Combinar ambos conjuntos
+            gdf_for_map = pd.concat([selected_high, selected_low])
+            
+            logger.info(f"Estrategia mixta: {len(selected_high)} puntos altos + {len(selected_low)} puntos distribuidos")
+        else:
+            gdf_for_map = gdf_all_population
+            logger.info("Usando todos los puntos disponibles")
+        
+        logger.info(f"📍 Puntos de población para MAPA: {len(gdf_for_map):,} (tipo LandScan)")
+        return gdf_for_map
+        
+    except Exception as e:
+        logger.error(f"Error preparando datos para mapa: {e}")
+        return None
+
+@lru_cache(maxsize=1)
+def calculate_population_by_canton():
+    """Calcula la población total por cantón usando TODOS los puntos (sin límite)"""
+    try:
+        logger.info("Calculando población por cantón usando TODOS los datos...")
+        
+        # Cargar datos - USAR TODOS LOS PUNTOS, NO LOS LIMITADOS
+        gdf_cantones = load_cantones_data()
+        gdf_poblacion = load_all_population_data()  # ¡CAMBIO IMPORTANTE!
+        
+        if gdf_cantones is None or gdf_poblacion is None:
+            logger.warning("No se pudieron cargar los datos necesarios")
+            return []
+        
+        # Asegurar mismo CRS
+        if gdf_cantones.crs != gdf_poblacion.crs:
+            gdf_cantones = gdf_cantones.to_crs(gdf_poblacion.crs)
+        
+        # Crear diccionario para almacenar población por cantón
+        canton_population = {}
+        
+        logger.info(f"Procesando {len(gdf_cantones)} cantones con {len(gdf_poblacion)} puntos de población COMPLETOS")
+        
+        # Optimización: crear un índice espacial para acelerar las consultas
+        from shapely.strtree import STRtree
+        
+        # Crear índice espacial para los puntos de población
+        population_geoms = list(gdf_poblacion.geometry)
+        population_tree = STRtree(population_geoms)
+        
+        # Para cada cantón, calcular la suma de población de puntos que intersectan
+        for idx, canton in gdf_cantones.iterrows():
+            canton_name = canton.get('DPA_DESCAN', f'Canton_{idx}')
+            canton_geom = canton.geometry
+            
+            try:
+                # Usar el índice espacial para encontrar candidatos cercanos
+                possible_matches_idx = list(population_tree.query(canton_geom))
+                
+                if possible_matches_idx:
+                    # Filtrar solo los que realmente intersectan
+                    candidate_points = gdf_poblacion.iloc[possible_matches_idx]
+                    points_in_canton = candidate_points[candidate_points.geometry.intersects(canton_geom)]
+                    
+                    # Sumar la población
+                    total_population = points_in_canton['population'].sum() if len(points_in_canton) > 0 else 0
+                else:
+                    total_population = 0
+                
+                canton_population[canton_name] = {
+                    'name': canton_name,
+                    'population': int(total_population),
+                    'formatted_population': f"{int(total_population):,}".replace(',', '.'),
+                    'points_count': len(candidate_points) if possible_matches_idx else 0  # Para debugging
+                }
+                
+                # Log para los cantones más poblados
+                if total_population > 50000:
+                    logger.info(f"Cantón {canton_name}: {int(total_population):,} habitantes ({len(candidate_points) if possible_matches_idx else 0} puntos)")
+                
+            except Exception as e:
+                logger.warning(f"Error procesando cantón {canton_name}: {e}")
+                canton_population[canton_name] = {
+                    'name': canton_name,
+                    'population': 0,
+                    'formatted_population': '0',
+                    'points_count': 0
+                }
+        
+        # Convertir a lista y ordenar por población (mayor a menor)
+        population_list = list(canton_population.values())
+        population_list.sort(key=lambda x: x['population'], reverse=True)
+        
+        # Log del resumen
+        total_calculated = sum(item['population'] for item in population_list)
+        logger.info(f"Población calculada para {len(population_list)} cantones")
+        logger.info(f"Población total calculada: {total_calculated:,} habitantes")
+        
+        # Log top 5 cantones
+        top_5_info = [f"{item['name']}: {item['population']:,}" for item in population_list[:5]]
+        logger.info(f"Top 5 cantones: {top_5_info}")
+        
+        return population_list
+        
+    except Exception as e:
+        logger.error(f"Error calculando población por cantón: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
+
+@main_bp.route("/api/population-by-canton")
+def get_population_by_canton():
+    """API endpoint para obtener datos de población por cantón"""
+    try:
+        population_data = calculate_population_by_canton()
+        return jsonify({
+            'success': True,
+            'data': population_data
+        })
+    except Exception as e:
+        logger.error(f"Error en API población por cantón: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+def add_cantones_to_map(map_obj):
+    """Agrega cantones al mapa con información de población en tooltips"""
+    gdf_cantones = load_cantones_data()
+    if gdf_cantones is None:
+        return
+        
+    # Obtener datos de población por cantón
+    population_data = calculate_population_by_canton()
+    population_dict = {item['name']: item for item in population_data}
+        
+    logger.info("Agregando cantones al mapa...")
+    
+    # Crear geojson con tooltips personalizados
+    def style_function(feature):
+        return {
+            "fillColor": "transparent",
+            "color": "black",
+            "weight": 1,
+            "fillOpacity": 0,
+        }
+    
+    # Agregar cada cantón con tooltip personalizado
+    for _, canton in gdf_cantones.iterrows():
+        canton_name = canton['DPA_DESCAN']
+        population_info = population_dict.get(canton_name, {'formatted_population': 'No disponible'})
+        
+        folium.GeoJson(
+            canton.geometry,
+            style_function=style_function,
+            tooltip=f"""
+            <div style="font-family: Arial, sans-serif; min-width: 150px;">
+                <b>Cantón:</b> {canton_name}<br>
+                <b>Habitantes:</b> {population_info['formatted_population']}
+            </div>
+            """
+        ).add_to(map_obj)
+
+def add_population_to_map(map_obj):
+    """Agrega puntos de población al mapa de forma optimizada"""
+    gdf_poblacion = load_population_data()
+    if gdf_poblacion is None:
+        return
+        
+    logger.info("Agregando puntos de población al mapa...")
+    
+    # Crear grupo de capas
+    poblacion_group = folium.FeatureGroup(name="Densidad de Población")
+    
+    # Optimización: crear todos los marcadores en batch
+    for _, row in gdf_poblacion.iterrows():
+        pop_value = row.get('population', 0)
+        region = row.get('region', 'continental')
+        color, opacity = get_population_color(pop_value, region)
+        
+        # Usar tamaño pequeño tipo LandScan para mejor visualización de densidad
+        radius = current_app.config.get('GLOBAL_POINT_SIZE', 1.5)  # Reducido para más parecido a LandScan
+        
+        folium.CircleMarker(
+            location=[row.geometry.y, row.geometry.x],
+            radius=radius,
+            color=color,
+            fill=True,
+            fillColor=color,
+            fillOpacity=opacity,
+            weight=0.2,  # Bordes más delgados para parecer más al LandScan
+        ).add_to(poblacion_group)
+    
+    poblacion_group.add_to(map_obj)
+
+@main_bp.route("/")
+def mapa():
+    """Ruta principal optimizada para mejor rendimiento"""
+    logger.info("Generando mapa...")
+    
+    # Crear mapa con configuración optimizada
+    m = folium.Map(
+        location=[-0.20, -78.50], 
+        zoom_start=7,  # Zoom más amplio para ver todo Ecuador
+        tiles="cartodbpositron",
+        prefer_canvas=True  # Mejor rendimiento para muchos puntos
+    )
+    
+    try:
+        # Agregar cantones
+        add_cantones_to_map(m)
+        
+        # Agregar población
+        add_population_to_map(m)
+        
+        logger.info("Mapa generado exitosamente!")
+        
+    except Exception as e:
+        logger.error(f"Error generando mapa: {e}")
         import traceback
         traceback.print_exc()
 
@@ -141,4 +379,27 @@ def mapa():
         map_name=m.get_name(),
         ruta_activa="mapa"
     )
+
+@main_bp.route("/api/clear-cache")
+def clear_cache():
+    """Endpoint para limpiar cache y recalcular datos"""
+    try:
+        # Limpiar cache de las funciones principales
+        load_all_population_data.cache_clear()
+        load_population_data.cache_clear()
+        calculate_population_by_canton.cache_clear()
+        load_cantones_data.cache_clear()
+        load_ecuador_boundaries.cache_clear()
+        
+        logger.info("Cache limpiado exitosamente")
+        return jsonify({
+            'success': True,
+            'message': 'Cache limpiado. Los datos se recalcularán en la próxima consulta.'
+        })
+    except Exception as e:
+        logger.error(f"Error limpiando cache: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 

@@ -1,0 +1,24 @@
+# Archivos de desarrollo
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.coverage
+.pytest_cache/
+
+# Archivos temporales
+*.log
+.DS_Store
+Thumbs.db
+
+# Archivos de utilidades que no se necesitan en producción
+utils/realistic_processor.py
+utils/adjust_point_size.py
+
+# Archivos grandes de datos no críticos (mantener solo los esenciales)
+data/landscan-global-2023.tif
+data/landscan-global-2023_continental_temp.tif
+data/landscan-global-2023_ecuador_temp.tif
+data/landscan-global-2023_galapagos_temp.tif

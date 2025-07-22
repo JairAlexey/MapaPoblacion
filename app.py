@@ -1,8 +1,18 @@
 from flask import Flask
 from routes.main import main_bp
+from config import config
+import os
 
 app = Flask(__name__)
+
+# Configurar la aplicación para producción en Railway
+if os.environ.get('RAILWAY_ENVIRONMENT'):
+    app.config.from_object(config['production'])
+else:
+    app.config.from_object(config['development'])
+
 app.register_blueprint(main_bp)
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5001)
+    port = int(os.environ.get("PORT", 5001))
+    app.run(debug=False, host="0.0.0.0", port=port)

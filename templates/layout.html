@@ -6,6 +6,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet"
         href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+  <link rel="stylesheet" 
+        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
   <style>
     #map {
       width: 100%;
@@ -44,6 +46,262 @@
       color: #28a745 !important; /* verde */
       font-weight: bold;
     }
+
+    /* Estilos para la tabla de población */
+    #population-table-container {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 350px;
+      max-height: 400px;
+      background: rgba(255, 255, 255, 0.95);
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      z-index: 1000;
+      backdrop-filter: blur(10px);
+    }
+
+    #population-table-header {
+      background: linear-gradient(135deg, #2c3e50, #34495e);
+      color: white;
+      padding: 10px 15px;
+      border-radius: 8px 8px 0 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: bold;
+    }
+
+    #population-table-header h6 {
+      margin: 0;
+      font-size: 14px;
+    }
+
+    #toggle-table {
+      background: none;
+      border: none;
+      color: white;
+      font-size: 16px;
+      cursor: pointer;
+      padding: 0;
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #toggle-table:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 3px;
+    }
+
+    #population-table-content {
+      max-height: 350px;
+      overflow-y: auto;
+      padding: 0;
+    }
+
+    #population-table-loading {
+      padding: 20px;
+      text-align: center;
+      color: #666;
+      font-size: 14px;
+    }
+
+    #population-table {
+      margin: 0;
+      font-size: 12px;
+      background: white;
+      color: #333;
+    }
+
+    #population-table th {
+      background: #f8f9fa;
+      border-top: none;
+      padding: 8px 10px;
+      font-size: 11px;
+      font-weight: bold;
+      color: #2c3e50;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    #population-table td {
+      padding: 6px 10px;
+      border-top: 1px solid #eee;
+      vertical-align: middle;
+      color: #333;
+    }
+
+    #population-table tbody tr:hover {
+      background-color: #f8f9fa;
+    }
+
+    .rank-number {
+      font-weight: bold;
+      color: #495057;
+      width: 30px;
+      text-align: center;
+    }
+
+    .canton-name {
+      font-weight: 500;
+      color: #2c3e50;
+    }
+
+    .population-number {
+      font-weight: bold;
+      text-align: right;
+    }
+
+    /* Colores basados en rangos de población usando la paleta de densidad */
+    .population-range-1 .population-number { color: #0066cc; } /* Muy baja - azul */
+    .population-range-2 .population-number { color: #00aa44; } /* Baja - verde */
+    .population-range-3 .population-number { color: #88dd00; } /* Moderada - verde claro */
+    .population-range-4 .population-number { color: #ffaa00; } /* Media - amarillo/naranja */
+    .population-range-5 .population-number { color: #ff5500; } /* Alta - rojo-naranja */
+    .population-range-6 .population-number { color: #cc0000; } /* Muy alta - rojo */
+
+    /* Colores especiales para top 3 ranks */
+    .rank-1 .rank-number { color: #f39c12; font-size: 13px; }
+    .rank-2 .rank-number { color: #95a5a6; font-size: 12px; }
+    .rank-3 .rank-number { color: #e67e22; font-size: 12px; }
+
+    /* Scrollbar personalizado */
+    #population-table-content::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    #population-table-content::-webkit-scrollbar-track {
+      background: #f1f1f1;
+    }
+
+    #population-table-content::-webkit-scrollbar-thumb {
+      background: #888;
+      border-radius: 3px;
+    }
+
+    #population-table-content::-webkit-scrollbar-thumb:hover {
+      background: #555;
+    }
+
+    /* Tabla minimizada */
+    .table-minimized #population-table-content {
+      display: none;
+    }
+
+    .table-minimized #population-table-container {
+      max-height: auto;
+    }
+
+    /* Información adicional */
+    .table-info {
+      padding: 8px 15px;
+      border-top: 1px solid #eee;
+      background: rgba(248, 249, 250, 0.8);
+      text-align: center;
+      color: #666;
+    }
+
+    .table-info small {
+      font-size: 11px;
+      color: #666;
+    }
+
+    .table-info a {
+      color: #6c757d !important;
+    }
+
+    /* Leyenda de colores del mapa */
+    #map-legend {
+      position: fixed;
+      top: 120px;
+      left: 20px;
+      width: 220px;
+      background: rgba(255, 255, 255, 0.95);
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      z-index: 1000;
+      backdrop-filter: blur(10px);
+      font-size: 12px;
+    }
+
+    #map-legend-header {
+      background: linear-gradient(135deg, #2c3e50, #34495e);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 8px 8px 0 0;
+      font-weight: bold;
+      font-size: 13px;
+      text-align: center;
+    }
+
+    #map-legend-content {
+      padding: 12px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      margin: 6px 0;
+    }
+
+    .legend-color {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      margin-right: 8px;
+      border: 1px solid rgba(0,0,0,0.2);
+    }
+
+    .legend-label {
+      flex: 1;
+      font-size: 11px;
+      color: #333;
+    }
+
+    .legend-section {
+      margin-bottom: 10px;
+    }
+
+    .legend-section-title {
+      font-weight: bold;
+      color: #2c3e50;
+      margin-bottom: 4px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Toggle button for legend */
+    #toggle-legend {
+      background: none;
+      border: none;
+      color: white;
+      font-size: 14px;
+      cursor: pointer;
+      padding: 0;
+      width: 18px;
+      height: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      float: right;
+    }
+
+    #toggle-legend:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 3px;
+    }
+
+    /* Leyenda minimizada */
+    .legend-minimized #map-legend-content {
+      display: none;
+    }
     
   </style>
 </head>
@@ -61,7 +319,7 @@
     <div class="collapse navbar-collapse justify-content-center" id="navbarNav">
       <ul class="navbar-nav text-center">
         <li class="nav-item mx-3">
-          <a class="nav-link {% if ruta_activa == 'alimentadores' %}active-link{% endif %}" href="/">Distribucion de la poblacion</a>
+          <a class="nav-link {% if ruta_activa == 'alimentadores' %}active-link{% endif %}" href="/">Distribución de población por cantones</a>
         </li>    
       </ul>
     </div>
@@ -82,8 +340,141 @@
 
   <script>
   document.addEventListener('DOMContentLoaded', () => {
-    const mapObj = window["{{ map_name }}"];  
+    const mapObj = window["{{ map_name }}"];
+    
+    // Cargar datos de población por cantón
+    loadPopulationData();
+    
+    // Manejar minimizar/maximizar tabla
+    document.getElementById('toggle-table').addEventListener('click', toggleTable);
+    
+    // Manejar minimizar/maximizar leyenda
+    const toggleLegendBtn = document.getElementById('toggle-legend');
+    if (toggleLegendBtn) {
+      toggleLegendBtn.addEventListener('click', toggleLegend);
+    }
   });
+
+  function loadPopulationData() {
+    fetch('/api/population-by-canton')
+      .then(response => response.json())
+      .then((data) => {
+        if (data.success) {
+          displayPopulationTable(data.data);
+        } else {
+          showError('Error cargando datos de población');
+        }
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        showError('Error de conexión');
+      });
+  }
+
+  function displayPopulationTable(data) {
+    const loadingDiv = document.getElementById('population-table-loading');
+    const table = document.getElementById('population-table');
+    const tbody = document.getElementById('population-table-body');
+    
+    // Limpiar contenido anterior
+    tbody.innerHTML = '';
+    
+    if (data.length === 0) {
+      showError('No se encontraron datos de población');
+      return;
+    }
+    
+    // Función para obtener clase de color basada en población (usando rangos similares a densidad)
+    function getPopulationColorClass(population) {
+      if (population < 50000) return 'population-range-1'; // Azul - muy baja
+      else if (population < 100000) return 'population-range-2'; // Verde - baja  
+      else if (population < 250000) return 'population-range-3'; // Verde claro - moderada
+      else if (population < 500000) return 'population-range-4'; // Amarillo/naranja - media
+      else if (population < 1000000) return 'population-range-5'; // Rojo-naranja - alta
+      else return 'population-range-6'; // Rojo - muy alta
+    }
+    
+    // Llenar tabla
+    data.forEach((canton, index) => {
+      const row = document.createElement('tr');
+      const rank = index + 1;
+      const populationClass = getPopulationColorClass(canton.population);
+      
+      // Agregar clase especial para top 3 y clase de color por población
+      if (rank <= 3) {
+        row.classList.add(`rank-${rank}`);
+      }
+      row.classList.add(populationClass);
+      
+      row.innerHTML = `
+        <td class="rank-number">${rank}</td>
+        <td class="canton-name">${canton.name}</td>
+        <td class="population-number">${canton.formatted_population}</td>
+      `;
+      
+      tbody.appendChild(row);
+    });
+    
+    // Mostrar tabla y ocultar loading
+    loadingDiv.style.display = 'none';
+    table.style.display = 'table';
+    
+    // Agregar información adicional
+    const totalPopulation = data.reduce((sum, canton) => sum + canton.population, 0);
+    const info = document.createElement('div');
+    info.className = 'table-info';
+    info.innerHTML = `
+      <small class="text-muted">
+        <i class="fas fa-info-circle"></i> 
+        Total: ${totalPopulation.toLocaleString()} habitantes en ${data.length} cantones<br>
+        <i class="fas fa-chart-line"></i>
+        <a href="/api/clear-cache" style="color: #6c757d; text-decoration: none;" title="Limpiar cache y recalcular">
+          Recalcular datos
+        </a>
+      </small>
+    `;
+    document.getElementById('population-table-content').appendChild(info);
+  }
+
+  function showError(message) {
+    const loadingDiv = document.getElementById('population-table-loading');
+    loadingDiv.innerHTML = `
+      <div class="text-danger">
+        <i class="fas fa-exclamation-triangle"></i>
+        <span class="ml-2">${message}</span>
+      </div>
+    `;
+  }
+
+  function toggleTable() {
+    const container = document.getElementById('population-table-container');
+    const button = document.getElementById('toggle-table');
+    
+    container.classList.toggle('table-minimized');
+    
+    if (container.classList.contains('table-minimized')) {
+      button.textContent = '+';
+      button.title = 'Maximizar';
+    } else {
+      button.textContent = '−';
+      button.title = 'Minimizar';
+    }
+  }
+
+  function toggleLegend() {
+    const container = document.getElementById('map-legend');
+    const button = document.getElementById('toggle-legend');
+    
+    container.classList.toggle('legend-minimized');
+    
+    if (container.classList.contains('legend-minimized')) {
+      button.textContent = '+';
+      button.title = 'Maximizar';
+    } else {
+      button.textContent = '−';
+      button.title = 'Minimizar';
+    }
+  }
 </script>
 </body>
 </html>
