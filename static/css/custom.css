@@ -7,3 +7,21 @@
 body {
     font-family: 'Segoe UI', sans-serif;
 }
+
+/* Estilos para el header de la tabla de población */
+#population-table-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+#population-table-header div {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+}
+
+#refresh-data {
+    font-size: 12px;
+    padding: 2px 6px;
+}

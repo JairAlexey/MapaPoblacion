@@ -319,7 +319,10 @@
     <div class="collapse navbar-collapse justify-content-center" id="navbarNav">
       <ul class="navbar-nav text-center">
         <li class="nav-item mx-3">
-          <a class="nav-link {% if ruta_activa == 'alimentadores' %}active-link{% endif %}" href="/">Distribución de población por cantones</a>
+          <a class="nav-link {% if ruta_activa == 'mapa' %}active-link{% endif %}" href="/">Distribución de población por cantones</a>
+        </li>    
+        <li class="nav-item mx-3">
+          <a class="nav-link {% if ruta_activa == 'parroquias' %}active-link{% endif %}" href="/parroquias">Distribución de población por parroquias</a>
         </li>    
       </ul>
     </div>
@@ -342,11 +345,20 @@
   document.addEventListener('DOMContentLoaded', () => {
     const mapObj = window["{{ map_name }}"];
     
-    // Cargar datos de población por cantón
-    loadPopulationData();
+    // SOLO cargar datos de cantones si NO estamos en la página de parroquias
+    const currentPath = window.location.pathname;
+    if (!currentPath.includes('/parroquias')) {
+      console.log('📊 Cargando datos de población por CANTÓN (layout.html)');
+      loadPopulationData();
+    } else {
+      console.log('🏛️ Página de parroquias detectada - NO cargar datos de cantones');
+    }
     
-    // Manejar minimizar/maximizar tabla
-    document.getElementById('toggle-table').addEventListener('click', toggleTable);
+    // Manejar minimizar/maximizar tabla (solo si existe)
+    const toggleTableBtn = document.getElementById('toggle-table');
+    if (toggleTableBtn) {
+      toggleTableBtn.addEventListener('click', toggleTable);
+    }
     
     // Manejar minimizar/maximizar leyenda
     const toggleLegendBtn = document.getElementById('toggle-legend');

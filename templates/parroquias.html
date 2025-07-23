@@ -1,0 +1,285 @@
+{% extends "layout.html" %}
+
+{% block title %}Mapa de Población por Parroquias{% endblock %}
+
+{% block content %}
+  <div id="map">{{ mapa|safe }}</div>
+  
+  <!-- Leyenda de colores del mapa -->
+  <div id="map-legend">
+    <div id="map-legend-header">
+      <i class="fas fa-palette"></i> Densidad de Población
+      <button id="toggle-legend" title="Minimizar/Maximizar">−</button>
+    </div>
+    <div id="map-legend-content">
+      <div class="legend-section">
+        <div class="legend-item">
+          <div class="legend-color" style="background-color: #0066cc; opacity: 0.3;"></div>
+          <div class="legend-label">Muy baja (&lt; 5 hab/km²)</div>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background-color: #00aa44; opacity: 0.4;"></div>
+          <div class="legend-label">Baja (5 - 25 hab/km²)</div>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background-color: #88dd00; opacity: 0.5;"></div>
+          <div class="legend-label">Moderada (25 - 100 hab/km²)</div>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background-color: #ffff00; opacity: 0.6;"></div>
+          <div class="legend-label">Media (100 - 500 hab/km²)</div>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background-color: #ffaa00; opacity: 0.7;"></div>
+          <div class="legend-label">Alta (500 - 1,500 hab/km²)</div>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background-color: #ff5500; opacity: 0.8;"></div>
+          <div class="legend-label">Muy alta (1,500 - 5,000 hab/km²)</div>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background-color: #cc0000; opacity: 0.9;"></div>
+          <div class="legend-label">Extrema (&gt; 5,000 hab/km²)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Tabla de población por parroquia -->
+  <div id="population-table-container">
+    <div id="population-table-header">
+      <h6><i class="fas fa-chart-bar"></i> Población por Parroquia</h6>
+      <div>
+        <button id="toggle-table" title="Minimizar/Maximizar">−</button>
+      </div>
+    </div>
+    <div id="population-table-content">
+      <div id="population-table-loading">
+        <div class="spinner-border spinner-border-sm text-primary" role="status">
+          <span class="sr-only">Cargando...</span>
+        </div>
+        <span class="ml-2">Calculando población por parroquia...</span>
+      </div>
+      <table id="population-table" class="table table-sm table-hover" style="display: none;">
+        <thead>
+          <tr>
+            <th style="width: 40px;">#</th>
+            <th>Parroquia</th>
+            <th style="width: 120px; text-align: right;">Habitantes</th>
+          </tr>
+        </thead>
+        <tbody id="population-table-body">
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// SOBRESCRIBIR COMPLETAMENTE las funciones de layout.html para parroquias
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('🚀 INICIANDO CARGA DE PARROQUIAS...');
+    
+    // Cargar datos de población por parroquia (NO cantones)
+    loadParroquiasPopulationData();
+    
+    // Manejar minimizar/maximizar leyenda
+    const toggleLegendBtn = document.getElementById('toggle-legend');
+    if (toggleLegendBtn) {
+        toggleLegendBtn.addEventListener('click', toggleLegend);
+    }
+    
+    // Manejar minimizar/maximizar tabla de información
+    const toggleTableBtn = document.getElementById('toggle-table');
+    if (toggleTableBtn) {
+        toggleTableBtn.addEventListener('click', toggleTable);
+    }
+});
+
+// FUNCIÓN ESPECÍFICA PARA PARROQUIAS
+function loadParroquiasPopulationData() {
+    console.log('🔄 CARGANDO DATOS DE POBLACIÓN POR PARROQUIA...');
+    console.log('🔍 URL actual:', window.location.pathname);
+    
+    // Agregar timestamp para evitar cache
+    const timestamp = new Date().getTime();
+    console.log('📡 Enviando petición a:', `/api/population-by-parroquia?t=${timestamp}`);
+    
+    fetch(`/api/population-by-parroquia?t=${timestamp}`, {
+        method: 'GET',
+        headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+        }
+    })
+      .then(response => {
+        console.log('📡 Respuesta recibida:', response.status, response.url);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then((data) => {
+        console.log('📊 Datos recibidos:', data);
+        console.log('📊 Total elementos:', data.data ? data.data.length : 'No data');
+        console.log('📊 Primer elemento:', data.data ? data.data[0] : 'No data');
+        console.log('📊 Tipo de primer elemento:', data.data && data.data[0] ? 'Nombre: ' + data.data[0].name + ' - Cantón: ' + data.data[0].canton : 'Sin datos');
+        
+        if (data.success) {
+          console.log('✅ Datos válidos, mostrando tabla de PARROQUIAS...');
+          displayParroquiasPopulationTable(data.data);
+        } else {
+          console.error('❌ Error en datos:', data.error);
+          showParroquiasError('Error cargando datos de población');
+        }
+      })
+      .catch(error => {
+        console.error('🚨 Error de conexión:', error);
+        showParroquiasError('Error de conexión: ' + error.message);
+      });
+}
+
+// FUNCIÓN ESPECÍFICA PARA MOSTRAR PARROQUIAS
+function displayParroquiasPopulationTable(data) {
+    console.log('🏛️ PARROQUIAS - Mostrando tabla con', data.length, 'elementos');
+    console.log('🔍 VERIFICANDO DATOS: Primera entrada:', data[0]);
+    
+    // Verificar que son parroquias y no cantones
+    const firstThree = data.slice(0, 3);
+    console.log('📋 Primeros 3 elementos:', firstThree.map(p => `${p.name} (${p.provincia}/${p.canton})`));
+    
+    // VALIDACIÓN CRÍTICA: Verificar estructura de datos
+    if (!data[0]?.canton) {
+        console.error('🚨 ERROR: Los datos no tienen estructura de parroquias (falta campo "canton")!');
+        console.error('🚨 Estructura recibida:', Object.keys(data[0] || {}));
+        showParroquiasError('Error: Estructura de datos incorrecta para parroquias');
+        return;
+    }
+    
+    // Validar que realmente sean parroquias (deben tener cantón)
+    const validParroquias = data.filter(p => p.canton && p.name);
+    if (validParroquias.length !== data.length) {
+        console.error('🚨 ERROR: Algunos elementos no son parroquias válidas!');
+        console.error('🚨 Elementos válidos:', validParroquias.length, 'de', data.length);
+    }
+    
+    const loadingDiv = document.getElementById('population-table-loading');
+    const table = document.getElementById('population-table');
+    const tbody = document.getElementById('population-table-body');
+    
+    // Limpiar contenido anterior
+    tbody.innerHTML = '';
+    
+    if (data.length === 0) {
+      showParroquiasError('No se encontraron datos de población');
+      return;
+    }
+    
+    // Función para obtener clase de color basada en población
+    function getPopulationColorClass(population) {
+      if (population < 5000) return 'population-range-1'; // Azul - muy baja
+      else if (population < 10000) return 'population-range-2'; // Verde - baja  
+      else if (population < 25000) return 'population-range-3'; // Verde claro - moderada
+      else if (population < 50000) return 'population-range-4'; // Amarillo/naranja - media
+      else if (population < 100000) return 'population-range-5'; // Rojo-naranja - alta
+      else return 'population-range-6'; // Rojo - muy alta
+    }
+    
+    // Llenar tabla
+    data.forEach((parroquia, index) => {
+      const row = document.createElement('tr');
+      const rank = index + 1;
+      const populationClass = getPopulationColorClass(parroquia.population);
+      
+      // Agregar clase especial para top 3 y clase de color por población
+      if (rank <= 3) {
+        row.classList.add(`rank-${rank}`);
+      }
+      row.classList.add(populationClass);
+      
+      row.innerHTML = `
+        <td class="rank-number">${rank}</td>
+        <td class="canton-name">${parroquia.name}</td>
+        <td class="population-number">${parroquia.formatted_population}</td>
+      `;
+      
+      tbody.appendChild(row);
+    });
+    
+    // Mostrar tabla y ocultar loading
+    loadingDiv.style.display = 'none';
+    table.style.display = 'table';
+    
+    // Agregar información adicional
+    const totalPopulation = data.reduce((sum, parroquia) => sum + parroquia.population, 0);
+    const info = document.createElement('div');
+    info.className = 'table-info';
+    info.innerHTML = `
+      <small class="text-muted">
+        <i class="fas fa-info-circle"></i> 
+        Total: ${totalPopulation.toLocaleString()} habitantes en ${data.length} parroquias<br>
+        <i class="fas fa-map-marked-alt"></i>
+        Datos basados en análisis geoespacial de puntos de población
+      </small>
+    `;
+    document.getElementById('population-table-content').appendChild(info);
+}
+
+function showParroquiasError(message) {
+    const loadingDiv = document.getElementById('population-table-loading');
+    loadingDiv.innerHTML = `
+      <div class="text-danger">
+        <i class="fas fa-exclamation-triangle"></i>
+        <span class="ml-2">${message}</span>
+      </div>
+    `;
+}
+
+function toggleLegend() {
+    const container = document.getElementById('map-legend');
+    const button = document.getElementById('toggle-legend');
+    
+    container.classList.toggle('legend-minimized');
+    
+    if (container.classList.contains('legend-minimized')) {
+        button.textContent = '+';
+        button.title = 'Maximizar';
+    } else {
+        button.textContent = '−';
+        button.title = 'Minimizar';
+    }
+}
+
+function toggleTable() {
+    const container = document.getElementById('population-table-container');
+    const button = document.getElementById('toggle-table');
+    
+    container.classList.toggle('table-minimized');
+    
+    if (container.classList.contains('table-minimized')) {
+        button.textContent = '+';
+        button.title = 'Maximizar';
+    } else {
+        button.textContent = '−';
+        button.title = 'Minimizar';
+    }
+}
+
+// SOBRESCRIBIR las funciones de layout.html para que no interfieran
+function loadPopulationData() {
+    console.log('🚫 Función loadPopulationData() de layout.html bloqueada para parroquias');
+    // No hacer nada para bloquear la función de layout.html
+}
+
+function displayPopulationTable() {
+    console.log('🚫 Función displayPopulationTable() de layout.html bloqueada para parroquias');
+    // No hacer nada para bloquear la función de layout.html
+}
+
+function showError() {
+    console.log('🚫 Función showError() de layout.html bloqueada para parroquias');
+    // No hacer nada para bloquear la función de layout.html
+}
+</script>
+{% endblock %}
