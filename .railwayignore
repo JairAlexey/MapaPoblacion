@@ -22,3 +22,8 @@ data/landscan-global-2023.tif
 data/landscan-global-2023_continental_temp.tif
 data/landscan-global-2023_ecuador_temp.tif
 data/landscan-global-2023_galapagos_temp.tif
+
+# No ignorar archivos de datos
+!data/
+!data/*.geojson
+!data/*.json

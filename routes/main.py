@@ -7,6 +7,7 @@ import json
 from functools import lru_cache
 import logging
 import pandas as pd
+from pathlib import Path
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -402,4 +403,129 @@ def clear_cache():
             'success': False,
             'error': str(e)
         }), 500
+
+def load_geojson_safe(file_path, description="archivo"):
+    """Carga un archivo GeoJSON de manera segura con múltiples intentos"""
+    try:
+        # Convertir a Path para mejor manejo
+        path = Path(file_path)
+        
+        # Verificar que el archivo existe
+        if not path.exists():
+            logger.error(f"❌ Archivo no encontrado: {path}")
+            return None
+            
+        # Verificar tamaño del archivo
+        if path.stat().st_size == 0:
+            logger.error(f"❌ Archivo vacío: {path}")
+            return None
+            
+        logger.info(f"📁 Intentando cargar {description}: {path}")
+        
+        # Método 1: Intentar con geopandas directamente
+        try:
+            gdf = gpd.read_file(str(path))
+            logger.info(f"✅ {description} cargado exitosamente con geopandas")
+            return gdf
+        except Exception as e1:
+            logger.warning(f"⚠️ Fallo método 1 (geopandas): {e1}")
+            
+        # Método 2: Intentar especificando driver
+        try:
+            gdf = gpd.read_file(str(path), driver='GeoJSON')
+            logger.info(f"✅ {description} cargado exitosamente con driver GeoJSON")
+            return gdf
+        except Exception as e2:
+            logger.warning(f"⚠️ Fallo método 2 (driver GeoJSON): {e2}")
+            
+        # Método 3: Intentar leyendo como JSON y convirtiendo
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                geojson_data = json.load(f)
+            gdf = gpd.GeoDataFrame.from_features(geojson_data['features'])
+            logger.info(f"✅ {description} cargado exitosamente como JSON")
+            return gdf
+        except Exception as e3:
+            logger.warning(f"⚠️ Fallo método 3 (JSON): {e3}")
+            
+        # Método 4: Intentar con diferentes codificaciones
+        for encoding in ['utf-8', 'latin-1', 'cp1252']:
+            try:
+                with open(path, 'r', encoding=encoding) as f:
+                    geojson_data = json.load(f)
+                gdf = gpd.GeoDataFrame.from_features(geojson_data['features'])
+                logger.info(f"✅ {description} cargado exitosamente con codificación {encoding}")
+                return gdf
+            except Exception as e4:
+                continue
+                
+        logger.error(f"❌ No se pudo cargar {description} con ningún método")
+        return None
+        
+    except Exception as e:
+        logger.error(f"❌ Error inesperado cargando {description}: {e}")
+        return None
+
+def generate_map():
+    try:
+        logger.info("Generando mapa...")
+        
+        # Definir rutas base
+        base_dir = Path(__file__).parent.parent
+        data_dir = base_dir / "data"
+        
+        logger.info(f"📁 Directorio base: {base_dir}")
+        logger.info(f"📁 Directorio de datos: {data_dir}")
+        
+        # Listar archivos disponibles
+        if data_dir.exists():
+            files = list(data_dir.glob("*.geojson"))
+            logger.info(f"📋 Archivos GeoJSON encontrados: {[f.name for f in files]}")
+        else:
+            logger.error(f"❌ Directorio de datos no existe: {data_dir}")
+            return None
+        
+        # Cargar cantones
+        cantones_path = data_dir / "cantones.geojson"
+        cantones_gdf = load_geojson_safe(cantones_path, "cantones")
+        
+        if cantones_gdf is None:
+            logger.error("❌ No se pudieron cargar los cantones")
+            return None
+            
+        # ...existing code for map generation...
+        
+    except Exception as e:
+        logger.error(f"❌ Error generando mapa: {e}")
+        return None
+
+def load_population_data():
+    """Carga datos de población con múltiples fallbacks"""
+    try:
+        base_dir = Path(__file__).parent.parent
+        data_dir = base_dir / "data"
+        
+        # Lista de archivos en orden de preferencia
+        population_files = [
+            "poblacion_ecuador_realistic.geojson",
+            "poblacion_ecuador_calibrated.geojson", 
+            "poblacion_ecuador_enhanced.geojson",
+            "poblacion_ecuador.geojson"
+        ]
+        
+        for filename in population_files:
+            file_path = data_dir / filename
+            logger.info(f"🎯 Intentando cargar: {filename}")
+            
+            population_gdf = load_geojson_safe(file_path, f"población ({filename})")
+            if population_gdf is not None:
+                logger.info(f"✅ Datos de población cargados desde: {filename}")
+                return population_gdf
+                
+        logger.error("❌ No se pudieron cargar datos de población desde ningún archivo")
+        return None
+        
+    except Exception as e:
+        logger.error(f"❌ Error cargando datos de población: {e}")
+        return None
 
