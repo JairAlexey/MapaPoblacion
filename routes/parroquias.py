@@ -7,6 +7,7 @@ import json
 from functools import lru_cache
 import logging
 import pandas as pd
+from utils.data_loader import get_data_directory, load_geojson_with_fallback
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -36,22 +37,19 @@ def get_population_color(pop_value, region="continental"):
 @lru_cache(maxsize=1)
 def load_parroquias_data():
     """Carga datos de parroquias con cache OPTIMIZADO"""
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    DATA_DIR = os.path.join(BASE_DIR, "..", "data")
-    parroquias_path = os.path.join(DATA_DIR, "parroquiasEcuador.geojson")
-    
     try:
         logger.info("🏛️  Cargando datos de parroquias...")
-        gdf_parroquias = gpd.read_file(parroquias_path)
+        gdf_parroquias = load_geojson_with_fallback("parroquiasEcuador.geojson", "parroquias")
         
-        logger.info(f"✅ Parroquias cargadas: {len(gdf_parroquias)} parroquias")
-        logger.info(f"📋 Columnas disponibles: {list(gdf_parroquias.columns)}")
-        
-        # Pre-simplificar geometrías para mejor rendimiento
-        logger.info("⚡ Pre-simplificando geometrías para mejor rendimiento...")
-        gdf_parroquias['geometry'] = gdf_parroquias.geometry.simplify(tolerance=0.001, preserve_topology=True)
-        
-        logger.info("✅ Geometrías simplificadas exitosamente")
+        if gdf_parroquias is not None:
+            logger.info(f"✅ Parroquias cargadas: {len(gdf_parroquias)} parroquias")
+            logger.info(f"📋 Columnas disponibles: {list(gdf_parroquias.columns)}")
+            
+            # Pre-simplificar geometrías para mejor rendimiento
+            logger.info("⚡ Pre-simplificando geometrías para mejor rendimiento...")
+            gdf_parroquias['geometry'] = gdf_parroquias.geometry.simplify(tolerance=0.001, preserve_topology=True)
+            
+            logger.info("✅ Geometrías simplificadas exitosamente")
         
         return gdf_parroquias
     except Exception as e:
@@ -75,40 +73,18 @@ def load_ecuador_boundaries():
 @lru_cache(maxsize=1)
 def load_all_population_data():
     """Carga TODOS los datos de población REALISTAS para cálculos precisos"""
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    DATA_DIR = os.path.join(BASE_DIR, "..", "data")
-    
-    # USAR DATOS REALISTAS basados en población oficial + LandScan
-    poblacion_path = os.path.join(DATA_DIR, "poblacion_ecuador_realistic.geojson")
-    
     try:
         logger.info("🎯 Cargando datos REALISTAS de población para parroquias...")
-        gdf_poblacion = gpd.read_file(poblacion_path)
+        gdf_poblacion = load_geojson_with_fallback("poblacion_ecuador_realistic.geojson", "población realista")
         
-        # Cargar fronteras para filtrado
-        gdf_ecuador, ecuador_union = load_ecuador_boundaries()
-        if gdf_ecuador is None:
-            logger.warning("No se pudieron cargar fronteras de Ecuador")
-            return gdf_poblacion  # Usar todos los datos sin filtro espacial
-            
-        # Asegurar mismo CRS
-        if gdf_poblacion.crs != gdf_ecuador.crs:
-            gdf_poblacion = gdf_poblacion.to_crs(gdf_ecuador.crs)
+        if gdf_poblacion is not None:
+            # Estadísticas de los datos cargados
+            total_population = gdf_poblacion['population'].sum()
+            logger.info(f"✅ DATOS REALISTAS cargados para parroquias: {len(gdf_poblacion):,} puntos")
+            logger.info(f"🏘️  Población total REALISTA: {total_population:,.0f} habitantes")
+            logger.info(f"📊 Rango de población: {gdf_poblacion['population'].min():.1f} - {gdf_poblacion['population'].max():.1f}")
         
-        # Filtrar espacialmente (SIN LÍMITE DE PUNTOS)
-        logger.info("Filtrando puntos dentro de Ecuador...")
-        gdf_filtrada = gdf_poblacion[
-            gdf_poblacion.within(ecuador_union) | 
-            gdf_poblacion.intersects(ecuador_union)
-        ]
-        
-        # Estadísticas de los datos cargados
-        total_population = gdf_filtrada['population'].sum()
-        logger.info(f"✅ DATOS REALISTAS cargados para parroquias: {len(gdf_filtrada):,} puntos")
-        logger.info(f"🏘️  Población total REALISTA: {total_population:,.0f} habitantes")
-        logger.info(f"📊 Rango de población: {gdf_filtrada['population'].min():.1f} - {gdf_filtrada['population'].max():.1f}")
-        
-        return gdf_filtrada
+        return gdf_poblacion
         
     except Exception as e:
         logger.error(f"❌ Error cargando datos realistas: {e}")
@@ -466,7 +442,7 @@ def get_parroquias_by_provincia(provincia_id):
             return jsonify({"error": "ID de provincia inválido"}), 400
     except ValueError:
         return jsonify({"error": "ID de provincia debe ser numérico"}), 400
-    
+
     # ...existing code for data processing...
-    
+
     return jsonify({"parroquias": []})  # Placeholder

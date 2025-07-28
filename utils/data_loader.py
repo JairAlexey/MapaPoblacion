@@ -7,6 +7,64 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+def get_data_directory():
+    """Obtiene el directorio de datos correcto para el entorno"""
+    possible_dirs = [
+        Path("/app/data"),  # Railway - donde setup_data.py guarda los archivos
+        Path(__file__).parent.parent / "data",  # Desarrollo local
+        Path("./data"),  # Relativo
+        Path("../data")  # Un nivel arriba
+    ]
+    
+    for data_dir in possible_dirs:
+        if data_dir.exists():
+            logger.info(f"📁 Directorio de datos: {data_dir}")
+            
+            # Listar archivos disponibles
+            geojson_files = list(data_dir.glob("*.geojson"))
+            logger.info(f"📋 Archivos disponibles: {[f.name for f in geojson_files]}")
+            
+            return data_dir
+    
+    logger.error("❌ No se encontró directorio de datos")
+    return None
+
+def validate_geojson_file(file_path):
+    """Valida que un archivo GeoJSON sea válido y no esté vacío"""
+    try:
+        if not file_path.exists():
+            return False, "Archivo no existe"
+            
+        file_size = file_path.stat().st_size
+        if file_size == 0:
+            return False, "Archivo vacío"
+            
+        # Verificar que sea JSON válido
+        with open(file_path, 'r', encoding='utf-8') as f:
+            first_char = f.read(1)
+            if not first_char or first_char.isspace():
+                return False, "Archivo comienza con espacios en blanco"
+                
+        # Intentar cargar como JSON
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            
+        if not isinstance(data, dict):
+            return False, "No es un objeto JSON válido"
+            
+        if 'type' not in data:
+            return False, "No tiene campo 'type'"
+            
+        if data['type'] not in ['FeatureCollection', 'Feature']:
+            return False, f"Tipo inválido: {data['type']}"
+            
+        return True, "Válido"
+        
+    except json.JSONDecodeError as e:
+        return False, f"Error JSON: {e}"
+    except Exception as e:
+        return False, f"Error: {e}"
+
 def load_geojson_with_fallback(base_filename, description="archivo"):
     """Carga archivos GeoJSON con múltiples fallbacks para diferentes entornos"""
     
@@ -26,6 +84,13 @@ def load_geojson_with_fallback(base_filename, description="archivo"):
         file_path = data_dir / candidate
         
         if not file_path.exists():
+            logger.warning(f"⚠️ Archivo no encontrado: {candidate}")
+            continue
+            
+        # Validar archivo antes de intentar cargarlo
+        is_valid, validation_msg = validate_geojson_file(file_path)
+        if not is_valid:
+            logger.warning(f"⚠️ Archivo inválido {candidate}: {validation_msg}")
             continue
             
         try:
@@ -33,35 +98,31 @@ def load_geojson_with_fallback(base_filename, description="archivo"):
             
             # Verificar tamaño del archivo
             file_size = file_path.stat().st_size
-            if file_size == 0:
-                logger.warning(f"⚠️ Archivo vacío: {candidate}")
-                continue
-            
             logger.info(f"📊 Tamaño del archivo: {file_size:,} bytes")
             
             # Intentar múltiples métodos de carga
             gdf = None
             
-            # Método 1: GeoPandas directo
+            # Método 1: JSON manual primero (más confiable)
             try:
-                gdf = gpd.read_file(str(file_path))
-                logger.info(f"✅ Cargado con geopandas: {len(gdf)} features")
-            except Exception as e1:
-                logger.warning(f"⚠️ Fallo método geopandas: {e1}")
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
                 
-                # Método 2: JSON manual
-                try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
+                if 'features' in data and len(data['features']) > 0:
+                    gdf = gpd.GeoDataFrame.from_features(data['features'])
+                    logger.info(f"✅ Cargado como JSON: {len(gdf)} features")
+                else:
+                    raise ValueError("No se encontraron features en el GeoJSON")
                     
-                    if 'features' in data:
-                        gdf = gpd.GeoDataFrame.from_features(data['features'])
-                        logger.info(f"✅ Cargado como JSON: {len(gdf)} features")
-                    else:
-                        raise ValueError("No se encontraron features en el GeoJSON")
-                        
+            except Exception as e1:
+                logger.warning(f"⚠️ Fallo método JSON: {e1}")
+                
+                # Método 2: GeoPandas directo
+                try:
+                    gdf = gpd.read_file(str(file_path))
+                    logger.info(f"✅ Cargado con geopandas: {len(gdf)} features")
                 except Exception as e2:
-                    logger.warning(f"⚠️ Fallo método JSON: {e2}")
+                    logger.warning(f"⚠️ Fallo método geopandas: {e2}")
                     continue
             
             if gdf is not None and len(gdf) > 0:
@@ -77,28 +138,6 @@ def load_geojson_with_fallback(base_filename, description="archivo"):
             continue
     
     logger.error(f"❌ No se pudo cargar {description} desde ningún archivo")
-    return None
-
-def get_data_directory():
-    """Obtiene el directorio de datos correcto para el entorno"""
-    possible_dirs = [
-        Path(__file__).parent.parent / "data",  # Desarrollo local
-        Path("/app/data"),  # Railway
-        Path("./data"),  # Relativo
-        Path("../data")  # Un nivel arriba
-    ]
-    
-    for data_dir in possible_dirs:
-        if data_dir.exists():
-            logger.info(f"📁 Directorio de datos: {data_dir}")
-            
-            # Listar archivos disponibles
-            geojson_files = list(data_dir.glob("*.geojson"))
-            logger.info(f"📋 Archivos disponibles: {[f.name for f in geojson_files]}")
-            
-            return data_dir
-    
-    logger.error("❌ No se encontró directorio de datos")
     return None
 
 # Funciones específicas para cada tipo de datos

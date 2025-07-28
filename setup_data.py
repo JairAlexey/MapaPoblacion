@@ -21,13 +21,51 @@ def setup_data_directory():
     logger.info(f"📁 Directorio de datos: {data_dir}")
     return data_dir
 
+def verify_downloaded_file(file_path):
+    """Verifica que el archivo descargado sea válido"""
+    try:
+        if not file_path.exists():
+            return False
+            
+        file_size = file_path.stat().st_size
+        if file_size == 0:
+            logger.error(f"❌ Archivo descargado está vacío: {file_path}")
+            return False
+            
+        # Verificar que sea JSON válido
+        with open(file_path, 'r', encoding='utf-8') as f:
+            first_line = f.readline().strip()
+            if not first_line.startswith('{'):
+                logger.error(f"❌ Archivo no comienza con JSON válido: {first_line[:50]}")
+                return False
+                
+        # Intentar cargar como JSON completo
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            
+        if 'type' not in data:
+            logger.error(f"❌ Archivo no tiene campo 'type': {file_path}")
+            return False
+            
+        logger.info(f"✅ Archivo válido: {file_path} ({file_size:,} bytes)")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Error verificando archivo {file_path}: {e}")
+        return False
+
 def download_from_github(filename, github_url, data_dir):
     """Descarga archivos desde GitHub"""
     file_path = data_dir / filename
     
-    if file_path.exists() and file_path.stat().st_size > 0:
-        logger.info(f"✅ {filename} ya existe")
-        return True
+    # Verificar si ya existe y es válido
+    if file_path.exists():
+        if verify_downloaded_file(file_path):
+            logger.info(f"✅ {filename} ya existe y es válido")
+            return True
+        else:
+            logger.warning(f"⚠️ {filename} existe pero es inválido, re-descargando...")
+            file_path.unlink()
     
     try:
         logger.info(f"⬇️ Descargando {filename}...")
@@ -40,19 +78,34 @@ def download_from_github(filename, github_url, data_dir):
         response = requests.get(github_url, headers=headers, timeout=300, stream=True)
         response.raise_for_status()
         
-        with open(file_path, 'wb') as f:
+        # Crear archivo temporal primero
+        temp_path = file_path.with_suffix('.tmp')
+        
+        with open(temp_path, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
                 if chunk:
                     f.write(chunk)
         
-        file_size = file_path.stat().st_size
-        logger.info(f"✅ {filename} descargado ({file_size:,} bytes)")
-        return True
+        # Verificar archivo temporal
+        if verify_downloaded_file(temp_path):
+            # Mover archivo temporal al final
+            temp_path.rename(file_path)
+            file_size = file_path.stat().st_size
+            logger.info(f"✅ {filename} descargado y verificado ({file_size:,} bytes)")
+            return True
+        else:
+            logger.error(f"❌ Archivo descargado es inválido: {filename}")
+            temp_path.unlink()
+            return False
         
     except Exception as e:
         logger.error(f"❌ Error descargando {filename}: {e}")
+        # Limpiar archivos parciales
         if file_path.exists():
             file_path.unlink()
+        temp_path = file_path.with_suffix('.tmp')
+        if temp_path.exists():
+            temp_path.unlink()
         return False
 
 def create_minimal_fallback_data(data_dir):

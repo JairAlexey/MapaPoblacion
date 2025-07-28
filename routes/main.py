@@ -8,6 +8,7 @@ from functools import lru_cache
 import logging
 import pandas as pd
 from pathlib import Path
+from utils.data_loader import get_data_directory, load_geojson_with_fallback
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -37,12 +38,8 @@ def get_population_color(pop_value, region="continental"):
 @lru_cache(maxsize=1)
 def load_cantones_data():
     """Carga datos de cantones con cache"""
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    DATA_DIR = os.path.join(BASE_DIR, "..", "data")
-    cantones_path = os.path.join(DATA_DIR, "cantones.geojson")
-    
     try:
-        return gpd.read_file(cantones_path)
+        return load_geojson_with_fallback("cantones.geojson", "cantones")
     except Exception as e:
         logger.error(f"Error cargando cantones: {e}")
         return None
@@ -64,62 +61,38 @@ def load_ecuador_boundaries():
 @lru_cache(maxsize=1)
 def load_all_population_data():
     """Carga TODOS los datos de población REALISTAS para cálculos precisos"""
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    DATA_DIR = os.path.join(BASE_DIR, "..", "data")
-    
-    # USAR DATOS REALISTAS basados en población oficial + LandScan
-    poblacion_path = os.path.join(DATA_DIR, "poblacion_ecuador_realistic.geojson")
-    
     try:
-        logger.info("🎯 Cargando datos REALISTAS de población...")
-        gdf_poblacion = gpd.read_file(poblacion_path)
-        
-        # Cargar fronteras para filtrado
-        gdf_ecuador, ecuador_union = load_ecuador_boundaries()
-        if gdf_ecuador is None:
-            logger.warning("No se pudieron cargar fronteras de Ecuador")
-            return gdf_poblacion  # Usar todos los datos sin filtro espacial
-            
-        # Asegurar mismo CRS
-        if gdf_poblacion.crs != gdf_ecuador.crs:
-            gdf_poblacion = gdf_poblacion.to_crs(gdf_ecuador.crs)
-        
-        # Filtrar espacialmente (SIN LÍMITE DE PUNTOS)
-        logger.info("Filtrando puntos dentro de Ecuador...")
-        gdf_filtrada = gdf_poblacion[
-            gdf_poblacion.within(ecuador_union) | 
-            gdf_poblacion.intersects(ecuador_union)
-        ]
-        
-        # Estadísticas de los datos cargados
-        total_population = gdf_filtrada['population'].sum()
-        logger.info(f"✅ DATOS REALISTAS cargados: {len(gdf_filtrada):,} puntos")
-        logger.info(f"🏘️  Población total REALISTA: {total_population:,.0f} habitantes")
-        logger.info(f"📊 Rango de población: {gdf_filtrada['population'].min():.1f} - {gdf_filtrada['population'].max():.1f}")
-        
-        return gdf_filtrada
-        
+        return load_geojson_with_fallback("poblacion_ecuador_realistic.geojson", "población completa")
     except Exception as e:
         logger.error(f"❌ Error cargando datos realistas: {e}")
-        logger.info("📁 Intentando fallback a datos calibrados...")
+        return None
+    logger.info("🎯 Cargando datos REALISTAS de población...")
+    gdf_poblacion = gpd.read_file(poblacion_path)
+    
+    # Cargar fronteras para filtrado
+    gdf_ecuador, ecuador_union = load_ecuador_boundaries()
+    if gdf_ecuador is None:
+        logger.warning("No se pudieron cargar fronteras de Ecuador")
+        return gdf_poblacion  # Usar todos los datos sin filtro espacial
         
-        # Fallback a datos anteriores
-        poblacion_path_fallback = os.path.join(DATA_DIR, "poblacion_ecuador_calibrated.geojson")
-        try:
-            gdf_poblacion = gpd.read_file(poblacion_path_fallback)
-            logger.info(f"⚠️  Usando datos fallback calibrados: {len(gdf_poblacion):,} puntos")
-            return gdf_poblacion
-        except Exception as e2:
-            logger.error(f"❌ Error en fallback calibrados: {e2}")
-            # Último fallback
-            poblacion_path_fallback2 = os.path.join(DATA_DIR, "poblacion_ecuador_enhanced.geojson")
-            try:
-                gdf_poblacion = gpd.read_file(poblacion_path_fallback2)
-                logger.info(f"⚠️  Usando datos fallback enhanced: {len(gdf_poblacion):,} puntos")
-                return gdf_poblacion
-            except Exception as e3:
-                logger.error(f"❌ Error en fallback enhanced: {e3}")
-                return None
+    # Asegurar mismo CRS
+    if gdf_poblacion.crs != gdf_ecuador.crs:
+        gdf_poblacion = gdf_poblacion.to_crs(gdf_ecuador.crs)
+    
+    # Filtrar espacialmente (SIN LÍMITE DE PUNTOS)
+    logger.info("Filtrando puntos dentro de Ecuador...")
+    gdf_filtrada = gdf_poblacion[
+        gdf_poblacion.within(ecuador_union) | 
+        gdf_poblacion.intersects(ecuador_union)
+    ]
+    
+    # Estadísticas de los datos cargados
+    total_population = gdf_filtrada['population'].sum()
+    logger.info(f"✅ DATOS REALISTAS cargados: {len(gdf_filtrada):,} puntos")
+    logger.info(f"🏘️  Población total REALISTA: {total_population:,.0f} habitantes")
+    logger.info(f"📊 Rango de población: {gdf_filtrada['population'].min():.1f} - {gdf_filtrada['population'].max():.1f}")
+    
+    return gdf_filtrada
 
 @lru_cache(maxsize=1)
 def load_population_data():
