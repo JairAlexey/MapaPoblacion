@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, current_app, jsonify
+from flask import Blueprint, render_template, current_app, jsonify, request
 import folium
 import geopandas as gpd
 import os
@@ -456,3 +456,17 @@ def test_parroquias_data():
             'success': False,
             'error': str(e)
         }), 500
+
+@parroquias_bp.route('/api/parroquias/<provincia_id>')
+def get_parroquias_by_provincia(provincia_id):
+    # Validar que provincia_id sea numérico
+    try:
+        provincia_id = int(provincia_id)
+        if provincia_id < 1 or provincia_id > 24:  # Ecuador tiene 24 provincias
+            return jsonify({"error": "ID de provincia inválido"}), 400
+    except ValueError:
+        return jsonify({"error": "ID de provincia debe ser numérico"}), 400
+    
+    # ...existing code for data processing...
+    
+    return jsonify({"parroquias": []})  # Placeholder

@@ -1,9 +1,10 @@
 # Configuración de la aplicación
 import os
+import logging
 
 class Config:
     # Configuración de Flask
-    SECRET_KEY = 'dev-secret-key-change-in-production'
+    SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
     DEBUG = True
     
     # Configuración del mapa optimizada
@@ -22,12 +23,25 @@ class Config:
     
 class ProductionConfig(Config):
     DEBUG = False
-    SECRET_KEY = os.environ.get('SECRET_KEY', 'fallback-secret-key-change-this')
-    GLOBAL_POINT_SIZE = 1.5  # Puntos más pequeños en producción para mejor rendimiento
-    LOG_LEVEL = 'WARNING'  # Menos logging en producción
+    LOG_LEVEL = logging.WARNING
     
+    # Configuración de logging para producción
+    @staticmethod
+    def init_app(app):
+        # Log de errores a stderr
+        import logging
+        from logging import StreamHandler
+        file_handler = StreamHandler()
+        file_handler.setLevel(logging.WARNING)
+        formatter = logging.Formatter(
+            '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
+        )
+        file_handler.setFormatter(formatter)
+        app.logger.addHandler(file_handler)
+
 class DevelopmentConfig(Config):
     DEBUG = True
+    LOG_LEVEL = logging.DEBUG
     GLOBAL_POINT_SIZE = 2.0
 
 # Configuración por defecto

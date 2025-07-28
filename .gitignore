@@ -1,5 +1,46 @@
 # Ignorar entorno virtual
 .venv/
+venv/
+env/
 
 # Ignorar pycache
 **/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Archivos de desarrollo y pruebas
+verify_data.py
+test_*.py
+*_test.py
+utils/realistic_processor.py
+utils/adjust_point_size.py
+
+# Archivos temporales
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# Archivos de configuración local
+.env
+config_local.py
+
+# Archivos grandes de datos no críticos
+data/*.tif
+data/*_temp.*
+data/landscan-*
+
+# Archivos de datos grandes (excluir de Git)
+data/*.geojson.gz
+data/parroquiasEcuador.geojson
+data/poblacion_ecuador_realistic.geojson
+
+# Mantener solo archivos pequeños en Git
+!data/cantones.geojson
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo

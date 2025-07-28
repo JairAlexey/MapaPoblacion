@@ -3,27 +3,31 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.Python
-*.so
 .coverage
 .pytest_cache/
 
-# Archivos temporales
+# Archivos temporales y logs
 *.log
 .DS_Store
 Thumbs.db
 
-# Archivos de utilidades que no se necesitan en producción
+# Archivos de pruebas y utilidades de desarrollo
+verify_data.py
+test_*.py
+*_test.py
 utils/realistic_processor.py
 utils/adjust_point_size.py
 
-# Archivos grandes de datos no críticos (mantener solo los esenciales)
-data/landscan-global-2023.tif
-data/landscan-global-2023_continental_temp.tif
-data/landscan-global-2023_ecuador_temp.tif
-data/landscan-global-2023_galapagos_temp.tif
+# Archivos grandes de datos no esenciales
+data/*.tif
+data/*_temp.*
+data/landscan-*
 
-# No ignorar archivos de datos
-!data/
+# Entornos virtuales
+.venv/
+venv/
+
+# IMPORTANTE: NO ignorar archivos esenciales
 !data/*.geojson
 !data/*.json
+!data/*.xlsx

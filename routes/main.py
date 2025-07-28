@@ -529,3 +529,21 @@ def load_population_data():
         logger.error(f"❌ Error cargando datos de población: {e}")
         return None
 
+@main_bp.route('/')
+def index():
+    return render_template('index.html')
+
+@main_bp.route('/api/cantones')
+def get_cantones():
+    try:
+        cantones_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'cantones.geojson')
+        with open(cantones_path, 'r', encoding='utf-8') as f:
+            cantones_data = json.load(f)
+        return jsonify(cantones_data)
+    except FileNotFoundError:
+        return jsonify({"error": "Archivo de cantones no encontrado"}), 404
+    except json.JSONDecodeError:
+        return jsonify({"error": "Error al procesar datos de cantones"}), 500
+    except Exception as e:
+        return jsonify({"error": "Error interno del servidor"}), 500
+
