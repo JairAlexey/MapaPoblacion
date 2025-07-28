@@ -25,12 +25,12 @@ def after_request(response):
 
 @app.route('/health')
 def health_check():
-    """Endpoint para health check de Railway"""
-    return {
-        "status": "healthy",
-        "message": "Application is running"
-    }, 200
+    """Health check para Railway"""
+    return {"status": "healthy", "message": "App running"}, 200
 
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5001))
+    app.run(debug=False, host="0.0.0.0", port=port)
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5001))
     app.run(debug=False, host="0.0.0.0", port=port)

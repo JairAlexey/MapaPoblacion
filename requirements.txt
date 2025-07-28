@@ -10,3 +10,4 @@ pyproj>=3.6.0
 packaging>=23.0
 gunicorn>=20.1.0
 pyogrio>=0.4.0
+requests>=2.31.0
